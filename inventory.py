@@ -39,16 +39,19 @@ OPENFOODFACTS_BASE = "https://world.openfoodfacts.org"
 
 def get_all_inventory() -> List[Dict]:
     """Return the full inventory list (read-only view)."""
+    # Return the shared in-memory list used by both the API and tests.
     return inventory_data
 
 
 def get_inventory_item(item_id: int) -> Optional[Dict]:
     """Return a single inventory item by `id`, or None if not found."""
+    # Scan the inventory and stop at the first item with a matching ID.
     return next((item for item in inventory_data if item["id"] == item_id), None)
 
 
 def _next_id() -> int:
     """Compute the next integer ID for a new inventory item."""
+    # Use the current maximum ID so deleted records do not cause duplicate IDs.
     return max((item["id"] for item in inventory_data), default=0) + 1
 
 
@@ -61,16 +64,17 @@ def fetch_openfoodfacts_product(barcode: Optional[str] = None, product_name: Opt
     """
     try:
         if barcode:
-            # Barcode lookup (single product endpoint)
+            # Barcode lookup uses the product endpoint because it returns one exact match.
             response = requests.get(f"{OPENFOODFACTS_BASE}/api/v0/product/{barcode}.json", timeout=5)
             response.raise_for_status()
             data = response.json()
+            # OpenFoodFacts reports successful barcode matches with status == 1.
             if data.get("status") == 1:
                 return data.get("product")
             return None
 
         if product_name:
-            # Search endpoint (returns list of products)
+            # Product-name lookup uses the search endpoint because names are not unique.
             payload = {
                 "search_terms": product_name,
                 "search_simple": 1,
@@ -81,12 +85,14 @@ def fetch_openfoodfacts_product(barcode: Optional[str] = None, product_name: Opt
             response = requests.get(f"{OPENFOODFACTS_BASE}/cgi/search.pl", params=payload, timeout=5)
             response.raise_for_status()
             data = response.json()
+            # Keep the first search result to make enrichment predictable for callers.
             products = data.get("products", [])
             return products[0] if products else None
     except (requests.RequestException, ValueError):
-        # Network or parsing error — return None so callers can handle gracefully
+        # Network or parsing error returns None so callers can handle failure gracefully.
         return None
 
+    # No barcode or product name was supplied.
     return None
 
 
@@ -95,6 +101,7 @@ def enhance_item_with_product(item: Dict, product_data: Dict) -> Dict:
 
     This merges useful OpenFoodFacts fields while preserving existing values.
     """
+    # Prefer local user-provided values when they already exist, then fill gaps.
     item.update({
         "product_name": product_data.get("product_name", item.get("product_name")),
         "brand": item.get("brand") or product_data.get("brands"),
@@ -111,6 +118,7 @@ def add_inventory_item(payload: Dict) -> Dict:
     `payload` may include `product_name`, `brand`, `quantity`, `price`, and `barcode`.
     When possible, the new item is enriched with data fetched from OpenFoodFacts.
     """
+    # Normalize user input into the inventory shape expected by the rest of the app.
     item = {
         "id": _next_id(),
         "product_name": payload.get("product_name", "Unnamed Product"),
@@ -122,12 +130,13 @@ def add_inventory_item(payload: Dict) -> Dict:
         "status": 1,
     }
 
-    # Try to enrich with OpenFoodFacts when barcode or name is provided
+    # Try to enrich with OpenFoodFacts when a barcode or name is provided.
     if payload.get("barcode") or payload.get("product_name"):
         product_data = fetch_openfoodfacts_product(barcode=payload.get("barcode"), product_name=payload.get("product_name"))
         if product_data:
             enhance_item_with_product(item, product_data)
 
+    # Store the completed item in memory and return it to the API layer.
     inventory_data.append(item)
     return item
 
@@ -140,8 +149,10 @@ def update_inventory_item(item_id: int, updates: Dict) -> Optional[Dict]:
     """
     item = get_inventory_item(item_id)
     if not item:
+        # Signal to the API layer that the requested item does not exist.
         return None
 
+    # Apply only fields that were included in the PATCH payload.
     if "quantity" in updates:
         item["quantity"] = int(updates["quantity"])
     if "price" in updates:
@@ -161,6 +172,8 @@ def delete_inventory_item(item_id: int) -> bool:
     """Remove an item from inventory by `id`. Returns True when deleted."""
     item = get_inventory_item(item_id)
     if not item:
+        # False lets the API return a 404 without raising an exception.
         return False
+    # Mutate the shared list so the item disappears from future reads.
     inventory_data.remove(item)
     return True

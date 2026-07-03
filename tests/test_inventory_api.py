@@ -8,6 +8,7 @@ import inventory
 
 @pytest.fixture(autouse=True)
 def reset_inventory_data():
+    # Reset the global in-memory inventory before every test for isolation.
     inventory.inventory_data = [
         {
             "id": 1,
@@ -20,10 +21,12 @@ def reset_inventory_data():
             "status": 1,
         }
     ]
+    # Let the test run after the fresh fixture data has been installed.
     yield
 
 
 def test_list_inventory_returns_all_items():
+    # Use Flask's test client so the route can be tested without a live server.
     client = app.test_client()
     response = client.get("/inventory")
     assert response.status_code == 200
@@ -33,6 +36,7 @@ def test_list_inventory_returns_all_items():
 
 
 def test_get_inventory_item_by_id():
+    # Confirm that the detail endpoint returns the seeded inventory record.
     client = app.test_client()
     response = client.get("/inventory/1")
     assert response.status_code == 200
@@ -42,6 +46,7 @@ def test_get_inventory_item_by_id():
 
 
 def test_get_inventory_item_not_found():
+    # Unknown IDs should return a 404 response.
     client = app.test_client()
     response = client.get("/inventory/999")
     assert response.status_code == 404
@@ -49,6 +54,7 @@ def test_get_inventory_item_not_found():
 
 @patch("inventory.fetch_openfoodfacts_product")
 def test_create_inventory_adds_item(mock_fetch):
+    # Mock OpenFoodFacts so the create route does not depend on the network.
     mock_fetch.return_value = {
         "product_name": "Organic Almond Milk",
         "brands": "Silk",
@@ -57,6 +63,7 @@ def test_create_inventory_adds_item(mock_fetch):
         "status": 1,
     }
 
+    # Post a valid item payload and verify the API assigns the next ID.
     client = app.test_client()
     payload = {
         "product_name": "Organic Almond Milk",
@@ -74,12 +81,14 @@ def test_create_inventory_adds_item(mock_fetch):
 
 
 def test_create_inventory_missing_payload():
+    # Empty JSON should fail validation because name or barcode is required.
     client = app.test_client()
     response = client.post("/inventory", data=json.dumps({}), content_type="application/json")
     assert response.status_code == 400
 
 
 def test_update_inventory_item():
+    # Patch only the fields that should change.
     client = app.test_client()
     payload = {"price": 5.25, "quantity": 15}
     response = client.patch("/inventory/1", data=json.dumps(payload), content_type="application/json")
@@ -90,6 +99,7 @@ def test_update_inventory_item():
 
 
 def test_delete_inventory_item():
+    # Delete the seeded item, then verify it can no longer be fetched.
     client = app.test_client()
     response = client.delete("/inventory/1")
     assert response.status_code == 200
@@ -100,6 +110,7 @@ def test_delete_inventory_item():
 
 @patch("inventory.requests.get")
 def test_fetch_openfoodfacts_product_by_barcode(mock_get):
+    # Mock the requests response object used inside fetch_openfoodfacts_product.
     mock_response = mock_get.return_value
     mock_response.raise_for_status.return_value = None
     mock_response.json.return_value = {
@@ -113,12 +124,14 @@ def test_fetch_openfoodfacts_product_by_barcode(mock_get):
         },
     }
 
+    # Barcode lookup should return the product object from the API payload.
     product = inventory.fetch_openfoodfacts_product(barcode="12345")
     assert product["product_name"] == "Test Product"
 
 
 @patch("inventory.requests.get")
 def test_fetch_openfoodfacts_product_by_name(mock_get):
+    # Mock a search response containing one matching product.
     mock_response = mock_get.return_value
     mock_response.raise_for_status.return_value = None
     mock_response.json.return_value = {
@@ -133,5 +146,6 @@ def test_fetch_openfoodfacts_product_by_name(mock_get):
         ]
     }
 
+    # Name lookup should return the first product from the products list.
     product = inventory.fetch_openfoodfacts_product(product_name="Test Product")
     assert product["code"] == "98765"
