@@ -1,3 +1,10 @@
+"""
+app.py
+
+Flask HTTP API for the inventory system. Exposes RESTful endpoints that
+operate on the in-memory inventory provided by `inventory.py`.
+"""
+
 from flask import Flask, jsonify, request
 from inventory import (
     add_inventory_item,
@@ -8,18 +15,22 @@ from inventory import (
     update_inventory_item,
 )
 
+# Create Flask application
 app = Flask(__name__)
 
 
+
+# Inventory Endpoints
+
 @app.route("/inventory", methods=["GET"])
 def list_inventory():
-    """Fetch all inventory items."""
+    """Return a JSON list of all inventory items."""
     return jsonify({"inventory": get_all_inventory()}), 200
 
 
 @app.route("/inventory/<int:item_id>", methods=["GET"])
 def get_inventory(item_id: int):
-    """Fetch a single inventory item."""
+    """Return a single inventory item by ID or 404 if missing."""
     item = get_inventory_item(item_id)
     if not item:
         return jsonify({"error": "Item not found"}), 404
@@ -28,7 +39,10 @@ def get_inventory(item_id: int):
 
 @app.route("/inventory", methods=["POST"])
 def create_inventory():
-    """Add a new inventory item and enrich it with OpenFoodFacts if possible."""
+    """Create an inventory item from JSON payload. Requires `product_name` or `barcode`.
+
+    The newly created item is attempted to be enriched from OpenFoodFacts.
+    """
     payload = request.get_json(force=True, silent=True)
     if not payload or not isinstance(payload, dict):
         return jsonify({"error": "Invalid JSON payload"}), 400
@@ -42,7 +56,7 @@ def create_inventory():
 
 @app.route("/inventory/<int:item_id>", methods=["PATCH"])
 def patch_inventory(item_id: int):
-    """Update a specific inventory item."""
+    """Apply partial updates to an inventory item."""
     payload = request.get_json(force=True, silent=True)
     if not payload or not isinstance(payload, dict):
         return jsonify({"error": "Invalid JSON payload"}), 400
@@ -55,7 +69,7 @@ def patch_inventory(item_id: int):
 
 @app.route("/inventory/<int:item_id>", methods=["DELETE"])
 def remove_inventory(item_id: int):
-    """Delete a specific inventory item."""
+    """Delete an inventory item by ID."""
     success = delete_inventory_item(item_id)
     if not success:
         return jsonify({"error": "Item not found"}), 404
@@ -64,7 +78,11 @@ def remove_inventory(item_id: int):
 
 @app.route("/inventory/search", methods=["GET"])
 def search_inventory_api():
-    """Search OpenFoodFacts by barcode or name and return product details."""
+    """Proxy to OpenFoodFacts search endpoints.
+
+    Accepts query parameters: `barcode` or `name` and returns the raw product
+    JSON returned by OpenFoodFacts.
+    """
     barcode = request.args.get("barcode")
     name = request.args.get("name")
     if not barcode and not name:
@@ -75,6 +93,9 @@ def search_inventory_api():
         return jsonify({"error": "Product not found or API error"}), 404
     return jsonify(product), 200
 
+
+
+# Error handlers
 
 @app.errorhandler(404)
 def not_found(error):

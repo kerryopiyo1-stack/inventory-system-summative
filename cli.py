@@ -1,3 +1,11 @@
+"""
+cli.py
+
+Simple interactive CLI for the inventory API. Uses HTTP requests to the
+running Flask server and provides a text menu to perform CRUD operations
+and to search the OpenFoodFacts database via the API.
+"""
+
 import requests
 import json
 
@@ -5,6 +13,7 @@ DEFAULT_SERVER = "http://127.0.0.1:5000"
 
 
 def print_menu():
+    """Print the main menu options."""
     print("\n" + "="*50)
     print("       INVENTORY MANAGEMENT CLI")
     print("="*50)
@@ -19,6 +28,7 @@ def print_menu():
 
 
 def view_all():
+    """Request and display all inventory items."""
     try:
         response = requests.get(f"{DEFAULT_SERVER}/inventory")
         if response.status_code == 200:
@@ -41,6 +51,7 @@ def view_all():
 
 
 def view_item():
+    """Request and display a single item by its ID."""
     try:
         item_id = int(input("\nEnter item ID: "))
         response = requests.get(f"{DEFAULT_SERVER}/inventory/{item_id}")
@@ -62,6 +73,7 @@ def view_item():
 
 
 def add_item():
+    """Collect input and POST a new item to the API."""
     try:
         name = input("\nProduct name: ")
         brand = input("Brand (default: Unknown): ") or "Unknown"
@@ -91,6 +103,7 @@ def add_item():
 
 
 def update_item():
+    """Collect fields to update and PATCH the item on the API."""
     try:
         item_id = int(input("\nEnter item ID: "))
         print("Leave blank to skip a field")
@@ -128,6 +141,7 @@ def update_item():
 
 
 def delete_item():
+    """Prompt and DELETE an item by ID."""
     try:
         item_id = int(input("\nEnter item ID to delete: "))
         confirm = input(f"Delete item {item_id}? (y/n): ").lower()
@@ -146,6 +160,7 @@ def delete_item():
 
 
 def find_product():
+    """Search OpenFoodFacts via the API by barcode or name."""
     try:
         print("\nSearch OpenFoodFacts:")
         print("1. By barcode")
@@ -175,6 +190,7 @@ def find_product():
 
 
 def main():
+    """Main menu loop."""
     while True:
         print_menu()
         choice = input("Enter your choice (1-7): ")
